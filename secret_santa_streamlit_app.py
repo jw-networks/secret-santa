@@ -348,7 +348,7 @@ def main() -> None:
             <div class="eyebrow">405th Infantry Division</div>
             <div class="hero-title">Secret Santa Generator</div>
             <div class="hero-sub">
-                405th Infantry Divisions official app for Secret Santa!
+                405th Infantry Division's official app for Secret Santa!
             </div>
         </div>
         """,
