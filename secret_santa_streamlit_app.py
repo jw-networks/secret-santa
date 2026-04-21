@@ -1,3 +1,4 @@
+import base64
 import csv
 import io
 import random
@@ -5,6 +6,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Dict, List, Set, Tuple
 
+import requests
 import streamlit as st
 
 # 405th-inspired palette
@@ -338,9 +340,86 @@ def inject_styles() -> None:
     )
 
 
+def get_user_email() -> str:
+    if not getattr(st.user, "is_logged_in", False):
+        return ""
+
+    # st.user is dict-like; different providers may populate different fields.
+    possible_keys = ["email", "mail", "preferred_username", "upn"]
+    for key in possible_keys:
+        value = st.user.get(key)
+        if isinstance(value, str) and "@" in value:
+            return value.lower().strip()
+
+    return ""
+
+
+def is_admin_user() -> bool:
+    email = get_user_email()
+    if not email:
+        return False
+
+    allowed_domain = st.secrets["auth"]["allowed_email_domain"].lower().strip()
+    return email.endswith("@" + allowed_domain)
+
+
+def github_headers() -> Dict[str, str]:
+    token = st.secrets["github"]["token"]
+    return {
+        "Authorization": f"Bearer {token}",
+        "Accept": "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28",
+    }
+
+
+def fetch_github_file(path: str) -> Dict[str, str]:
+    owner = st.secrets["github"]["owner"]
+    repo = st.secrets["github"]["repo"]
+    branch = st.secrets["github"].get("branch", "main")
+
+    url = f"https://api.github.com/repos/{owner}/{repo}/contents/{path}"
+    response = requests.get(url, headers=github_headers(), params={"ref": branch}, timeout=30)
+    response.raise_for_status()
+    return response.json()
+
+
+def save_github_file(path: str, content_text: str, commit_message: str) -> None:
+    owner = st.secrets["github"]["owner"]
+    repo = st.secrets["github"]["repo"]
+    branch = st.secrets["github"].get("branch", "main")
+
+    current = fetch_github_file(path)
+    sha = current["sha"]
+
+    url = f"https://api.github.com/repos/{owner}/{repo}/contents/{path}"
+    encoded_content = base64.b64encode(content_text.encode("utf-8")).decode("utf-8")
+
+    payload = {
+        "message": commit_message,
+        "content": encoded_content,
+        "sha": sha,
+        "branch": branch,
+    }
+
+    response = requests.put(url, headers=github_headers(), json=payload, timeout=30)
+    response.raise_for_status()
+
+
+def maybe_show_login() -> None:
+    if not getattr(st.user, "is_logged_in", False):
+        st.info("Please sign in to continue.")
+        if st.button("Sign in", use_container_width=True):
+            st.login()
+        st.stop()
+
+
 def main() -> None:
     st.set_page_config(page_title="405th Secret Santa", page_icon="🎁", layout="wide")
     inject_styles()
+    maybe_show_login()
+
+    user_email = get_user_email()
+    admin_user = is_admin_user()
 
     st.markdown(
         """
@@ -348,17 +427,24 @@ def main() -> None:
             <div class="eyebrow">405th Infantry Division</div>
             <div class="hero-title">Secret Santa Generator</div>
             <div class="hero-sub">
-                405th Infantry Division's official app for Secret Santa!
+                Built with a 405th-inspired interface using cool blue highlights,
+                dark tactical panels, and a cleaner event-ready layout.
             </div>
         </div>
         """,
         unsafe_allow_html=True,
     )
 
-    st.write(
-        "Upload names and optional pairing history, then generate a new round "
-        "that avoids self-pairs, repeat giver→recipient pairs, and mutual swaps."
-    )
+    top_a, top_b = st.columns([0.8, 0.2])
+    with top_a:
+        st.write(
+            "Upload names and optional pairing history, then generate a new round "
+            "that avoids self-pairs, repeat giver→recipient pairs, and mutual swaps."
+        )
+        st.caption(f"Signed in as: {user_email}")
+    with top_b:
+        if st.button("Log out", use_container_width=True):
+            st.logout()
 
     current_year = str(datetime.now().year)
 
@@ -442,8 +528,13 @@ def main() -> None:
                 st.error(f"Unexpected error: {error}")
 
     with col2:
+        note = (
+            "You are authorized to save official history back to GitHub."
+            if admin_user
+            else "You can generate and download files, but only 405th email accounts can save official history."
+        )
         st.markdown(
-            """
+            f"""
             <div class="section-card">
                 <div class="eyebrow">Event notes</div>
                 <p class="footer-note">
@@ -451,6 +542,7 @@ def main() -> None:
                     pairings. After generating, download the updated history file and use
                     that next time.
                 </p>
+                <p class="footer-note">{note}</p>
             </div>
             """,
             unsafe_allow_html=True,
@@ -498,6 +590,28 @@ def main() -> None:
                 mime="text/csv",
                 use_container_width=True,
             )
+
+        if admin_user:
+            st.divider()
+            st.subheader("Admin-only official save")
+
+            commit_message = st.text_input(
+                "Commit message",
+                value=f"Update Secret Santa history for {run_year}",
+            )
+
+            if st.button("Save official history to GitHub", use_container_width=True):
+                try:
+                    save_github_file(
+                        path=st.secrets["github"]["history_path"],
+                        content_text=updated_history_csv,
+                        commit_message=commit_message,
+                    )
+                    st.success("Official history saved to GitHub.")
+                except requests.HTTPError as error:
+                    st.error(f"GitHub API error: {error.response.status_code} {error.response.text}")
+                except Exception as error:
+                    st.error(f"Save failed: {error}")
 
         st.markdown("</div>", unsafe_allow_html=True)
 
