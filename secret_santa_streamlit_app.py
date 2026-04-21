@@ -14,9 +14,7 @@ ACCENT = "#1D1D22"
 TEXT = "#F4F7FA"
 MUTED = "#9ECFDF"
 
-
 Pair = Tuple[str, str]
-HistoryPair = Tuple[str, str, str]
 
 
 class SecretSantaError(Exception):
@@ -50,6 +48,7 @@ def parse_names_from_text(text: str) -> List[str]:
 def parse_names_from_csv(file_bytes: bytes) -> List[str]:
     text = file_bytes.decode("utf-8-sig")
     reader = csv.DictReader(io.StringIO(text))
+
     if "name" not in (reader.fieldnames or []):
         raise SecretSantaError("Names CSV must contain a 'name' column.")
 
@@ -72,14 +71,18 @@ def parse_history_from_csv(file_bytes: bytes) -> List[HistoryRecord]:
     text = file_bytes.decode("utf-8-sig")
     reader = csv.DictReader(io.StringIO(text))
     required = {"year", "giver", "recipient"}
+
     if not required.issubset(set(reader.fieldnames or [])):
-        raise SecretSantaError("History CSV must contain 'year', 'giver', and 'recipient' columns.")
+        raise SecretSantaError(
+            "History CSV must contain 'year', 'giver', and 'recipient' columns."
+        )
 
     history: List[HistoryRecord] = []
     for row in reader:
         year = str(row.get("year", "")).strip()
         giver = normalize_name(row.get("giver", ""))
         recipient = normalize_name(row.get("recipient", ""))
+
         if year and giver and recipient:
             history.append(HistoryRecord(year=year, giver=giver, recipient=recipient))
 
@@ -105,7 +108,7 @@ def is_valid_assignment(
     if recipient in assignments.values():
         return False
 
-    # Prevent A -> B and B -> A in the same round.
+    # Prevent A -> B and B -> A in the same round
     if assignments.get(recipient) == giver:
         return False
 
@@ -118,7 +121,9 @@ def generate_assignments(
     max_attempts: int = 10000,
 ) -> Dict[str, str]:
     if len(names) == 2:
-        raise SecretSantaError("With only 2 participants, reciprocal gifting is unavoidable.")
+        raise SecretSantaError(
+            "With only 2 participants, reciprocal gifting is unavoidable."
+        )
 
     history_pairs = build_history_set(history)
 
@@ -144,7 +149,8 @@ def generate_assignments(
             return assignments
 
     raise SecretSantaError(
-        "No valid assignment could be found with the current constraints. Try adding more participants or relaxing history."
+        "No valid assignment could be found with the current constraints. "
+        "Try adding more participants or relaxing history."
     )
 
 
@@ -152,8 +158,10 @@ def assignments_to_csv(assignments: Dict[str, str], year: str) -> str:
     output = io.StringIO()
     writer = csv.writer(output)
     writer.writerow(["year", "giver", "recipient"])
+
     for giver, recipient in sorted(assignments.items()):
         writer.writerow([year, giver, recipient])
+
     return output.getvalue()
 
 
@@ -177,10 +185,14 @@ def history_template_csv() -> str:
     return output.getvalue()
 
 
-def combine_history(history: List[HistoryRecord], assignments: Dict[str, str], year: str) -> List[HistoryRecord]:
+def combine_history(
+    history: List[HistoryRecord], assignments: Dict[str, str], year: str
+) -> List[HistoryRecord]:
     updated = history[:]
+
     for giver, recipient in sorted(assignments.items()):
         updated.append(HistoryRecord(year=year, giver=giver, recipient=recipient))
+
     return updated
 
 
@@ -188,54 +200,76 @@ def history_to_csv(history: List[HistoryRecord]) -> str:
     output = io.StringIO()
     writer = csv.writer(output)
     writer.writerow(["year", "giver", "recipient"])
+
     for record in history:
         writer.writerow([record.year, record.giver, record.recipient])
+
     return output.getvalue()
 
 
-def main() -> None:
-    st.set_page_config(page_title="405th Secret Santa", page_icon="🎁", layout="wide")
-
+def inject_styles() -> None:
     st.markdown(
         f"""
         <style>
-            .stApp {{
-                background: radial-gradient(circle at top, rgba(15,127,138,0.28), rgba(0,0,0,0) 35%),
-                            linear-gradient(180deg, #091115 0%, #0c161b 45%, #081014 100%);
-                color: {TEXT};
+            header[data-testid="stHeader"] {{
+                background: transparent;
             }}
+
+            footer {{
+                display: none;
+            }}
+
+            .stApp {{
+                background:
+                    radial-gradient(circle at top, rgba(15,127,138,0.28), rgba(0,0,0,0) 35%),
+                    linear-gradient(180deg, #091115 0%, #0c161b 45%, #081014 100%);
+                color: {TEXT};
+                padding-top: 1.5rem;
+            }}
+
             .block-container {{
-                padding-top: 2rem;
+                padding-top: 3.5rem;
                 padding-bottom: 2rem;
                 max-width: 1100px;
             }}
+
             h1, h2, h3 {{
                 color: {TEXT};
                 letter-spacing: 0.02em;
             }}
+
             .hero-card, .section-card {{
                 background: linear-gradient(180deg, rgba(29,29,34,0.94), rgba(16,23,29,0.96));
                 border: 1px solid rgba(105,197,232,0.28);
                 border-radius: 20px;
                 box-shadow: 0 8px 30px rgba(0,0,0,0.28);
             }}
+
             .hero-card {{
                 padding: 1.35rem 1.5rem;
+                margin-top: 1rem;
                 margin-bottom: 1rem;
                 position: relative;
                 overflow: hidden;
             }}
+
             .hero-card:before {{
                 content: "";
                 position: absolute;
                 inset: 0;
-                background: linear-gradient(90deg, rgba(105,197,232,0.08), rgba(15,127,138,0.05));
+                background: linear-gradient(
+                    90deg,
+                    rgba(105,197,232,0.08),
+                    rgba(15,127,138,0.05)
+                );
                 pointer-events: none;
             }}
+
             .section-card {{
                 padding: 1rem 1rem 0.5rem 1rem;
                 margin-bottom: 1rem;
             }}
+
             .eyebrow {{
                 color: {PRIMARY};
                 font-size: 0.86rem;
@@ -244,17 +278,20 @@ def main() -> None:
                 letter-spacing: 0.12em;
                 margin-bottom: 0.35rem;
             }}
+
             .hero-title {{
                 font-size: 2.2rem;
                 font-weight: 800;
                 margin-bottom: 0.35rem;
                 line-height: 1.05;
             }}
+
             .hero-sub {{
                 color: {MUTED};
                 font-size: 1rem;
                 max-width: 760px;
             }}
+
             .rule-box {{
                 background: rgba(105,197,232,0.08);
                 border: 1px solid rgba(105,197,232,0.18);
@@ -262,59 +299,94 @@ def main() -> None:
                 padding: 0.9rem 1rem;
                 margin-top: 0.25rem;
             }}
-            .stButton > button, .stDownloadButton > button {{
+
+            .stButton > button,
+            .stDownloadButton > button {{
                 border-radius: 999px;
                 border: 1px solid rgba(105,197,232,0.35);
                 background: linear-gradient(180deg, {PRIMARY}, #59b8dc);
                 color: #081014;
                 font-weight: 800;
             }}
-            .stButton > button:hover, .stDownloadButton > button:hover {{
+
+            .stButton > button:hover,
+            .stDownloadButton > button:hover {{
                 border-color: rgba(105,197,232,0.65);
                 box-shadow: 0 0 0 2px rgba(105,197,232,0.12);
             }}
-            .stTextInput input, .stTextArea textarea, .stFileUploader {{
+
+            .stTextInput input,
+            .stTextArea textarea,
+            .stFileUploader {{
                 background: rgba(255,255,255,0.03);
                 border-radius: 14px;
             }}
+
             [data-testid="stDataFrame"] {{
                 border: 1px solid rgba(105,197,232,0.2);
                 border-radius: 16px;
                 overflow: hidden;
             }}
+
             .footer-note {{
                 color: {MUTED};
                 font-size: 0.92rem;
             }}
         </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def main() -> None:
+    st.set_page_config(page_title="405th Secret Santa", page_icon="🎁", layout="wide")
+    inject_styles()
+
+    st.markdown(
+        """
         <div class="hero-card">
             <div class="eyebrow">405th Infantry Division</div>
             <div class="hero-title">Secret Santa Generator</div>
-            <div class="hero-sub">Built with a 405th-inspired interface using cool blue highlights, dark tactical panels, and a cleaner event-ready layout.</div>
+            <div class="hero-sub">
+                Built with a 405th-inspired interface using cool blue highlights,
+                dark tactical panels, and a cleaner event-ready layout.
+            </div>
         </div>
         """,
         unsafe_allow_html=True,
     )
 
     st.write(
-        "Upload names and optional pairing history, then generate a new round that avoids self-pairs, repeat giver→recipient pairs, and mutual swaps."
+        "Upload names and optional pairing history, then generate a new round "
+        "that avoids self-pairs, repeat giver→recipient pairs, and mutual swaps."
     )
 
     current_year = str(datetime.now().year)
 
     st.markdown('<div class="section-card">', unsafe_allow_html=True)
     top_left, top_right = st.columns([1, 1])
+
     with top_left:
         year = st.text_input("Year for this round", value=current_year)
+
     with top_right:
         st.markdown(
-            '<div class="rule-box"><strong>Rules enforced</strong><br>No self-pairing<br>No repeated giver → recipient from history<br>No two-person swap in the same round</div>',
+            """
+            <div class="rule-box">
+                <strong>Rules enforced</strong><br>
+                No self-pairing<br>
+                No repeated giver → recipient from history<br>
+                No two-person swap in the same round
+            </div>
+            """,
             unsafe_allow_html=True,
         )
-    st.markdown('</div>', unsafe_allow_html=True)
+
+    st.markdown("</div>", unsafe_allow_html=True)
 
     st.markdown('<div class="section-card">', unsafe_allow_html=True)
     st.subheader("Participants")
+
     names_file = st.file_uploader("Upload names CSV", type=["csv"], key="names_file")
     names_text = st.text_area(
         "Or paste one name per line",
@@ -323,7 +395,9 @@ def main() -> None:
     )
 
     st.subheader("History")
-    history_file = st.file_uploader("Upload history CSV (optional)", type=["csv"], key="history_file")
+    history_file = st.file_uploader(
+        "Upload history CSV (optional)", type=["csv"], key="history_file"
+    )
 
     with st.expander("CSV templates"):
         st.download_button(
@@ -339,7 +413,7 @@ def main() -> None:
             mime="text/csv",
         )
 
-    st.markdown('</div>', unsafe_allow_html=True)
+    st.markdown("</div>", unsafe_allow_html=True)
 
     col1, col2 = st.columns([1.1, 0.9])
 
@@ -370,7 +444,16 @@ def main() -> None:
 
     with col2:
         st.markdown(
-            '<div class="section-card"><div class="eyebrow">Event notes</div><p class="footer-note">Upload an existing history file if you want this year to avoid prior pairings. After generating, download the updated history file and use that next time.</p></div>',
+            """
+            <div class="section-card">
+                <div class="eyebrow">Event notes</div>
+                <p class="footer-note">
+                    Upload an existing history file if you want this year to avoid prior
+                    pairings. After generating, download the updated history file and use
+                    that next time.
+                </p>
+            </div>
+            """,
             unsafe_allow_html=True,
         )
 
@@ -379,12 +462,18 @@ def main() -> None:
         updated_history = st.session_state["updated_history"]
         run_year = st.session_state["year"]
 
-        st.success(f"Generated pairings for {st.session_state['names_count']} participants.")
+        st.success(
+            f"Generated pairings for {st.session_state['names_count']} participants."
+        )
 
         st.markdown('<div class="section-card">', unsafe_allow_html=True)
         st.subheader("Assignments")
+
         st.dataframe(
-            [{"giver": giver, "recipient": recipient} for giver, recipient in sorted(assignments.items())],
+            [
+                {"giver": giver, "recipient": recipient}
+                for giver, recipient in sorted(assignments.items())
+            ],
             use_container_width=True,
         )
 
@@ -392,6 +481,7 @@ def main() -> None:
         updated_history_csv = history_to_csv(updated_history)
 
         d1, d2 = st.columns(2)
+
         with d1:
             st.download_button(
                 "Download assignments CSV",
@@ -400,6 +490,7 @@ def main() -> None:
                 mime="text/csv",
                 use_container_width=True,
             )
+
         with d2:
             st.download_button(
                 "Download updated history CSV",
@@ -409,10 +500,11 @@ def main() -> None:
                 use_container_width=True,
             )
 
-        st.markdown('</div>', unsafe_allow_html=True)
+        st.markdown("</div>", unsafe_allow_html=True)
 
         st.info(
-            "Use the updated history CSV next time so this year's pairings are automatically blocked in future rounds."
+            "Use the updated history CSV next time so this year's pairings are "
+            "automatically blocked in future rounds."
         )
 
 
