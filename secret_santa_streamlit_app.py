@@ -222,8 +222,10 @@ def fetch_github_file(path: str) -> Dict[str, str]:
 
 def load_github_file_text(path: str) -> str:
     current = fetch_github_file(path)
-    encoded = current["content"].replace("
-", "")
+
+    encoded = current["content"]
+    encoded = encoded.replace("\n", "")  # remove real newlines
+
     return base64.b64decode(encoded).decode("utf-8")
 
 
