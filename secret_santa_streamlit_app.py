@@ -7,6 +7,13 @@ from typing import Dict, List, Set, Tuple
 
 import streamlit as st
 
+# 405th-inspired palette
+PRIMARY = "#69C5E8"
+SECONDARY = "#0F7F8A"
+ACCENT = "#1D1D22"
+TEXT = "#F4F7FA"
+MUTED = "#9ECFDF"
+
 
 Pair = Tuple[str, str]
 HistoryPair = Tuple[str, str, str]
@@ -187,16 +194,126 @@ def history_to_csv(history: List[HistoryRecord]) -> str:
 
 
 def main() -> None:
-    st.set_page_config(page_title="Secret Santa Generator", page_icon="🎁", layout="wide")
+    st.set_page_config(page_title="405th Secret Santa", page_icon="🎁", layout="wide")
 
-    st.title("🎁 Secret Santa Generator")
+    st.markdown(
+        f"""
+        <style>
+            .stApp {{
+                background: radial-gradient(circle at top, rgba(15,127,138,0.28), rgba(0,0,0,0) 35%),
+                            linear-gradient(180deg, #091115 0%, #0c161b 45%, #081014 100%);
+                color: {TEXT};
+            }}
+            .block-container {{
+                padding-top: 2rem;
+                padding-bottom: 2rem;
+                max-width: 1100px;
+            }}
+            h1, h2, h3 {{
+                color: {TEXT};
+                letter-spacing: 0.02em;
+            }}
+            .hero-card, .section-card {{
+                background: linear-gradient(180deg, rgba(29,29,34,0.94), rgba(16,23,29,0.96));
+                border: 1px solid rgba(105,197,232,0.28);
+                border-radius: 20px;
+                box-shadow: 0 8px 30px rgba(0,0,0,0.28);
+            }}
+            .hero-card {{
+                padding: 1.35rem 1.5rem;
+                margin-bottom: 1rem;
+                position: relative;
+                overflow: hidden;
+            }}
+            .hero-card:before {{
+                content: "";
+                position: absolute;
+                inset: 0;
+                background: linear-gradient(90deg, rgba(105,197,232,0.08), rgba(15,127,138,0.05));
+                pointer-events: none;
+            }}
+            .section-card {{
+                padding: 1rem 1rem 0.5rem 1rem;
+                margin-bottom: 1rem;
+            }}
+            .eyebrow {{
+                color: {PRIMARY};
+                font-size: 0.86rem;
+                font-weight: 700;
+                text-transform: uppercase;
+                letter-spacing: 0.12em;
+                margin-bottom: 0.35rem;
+            }}
+            .hero-title {{
+                font-size: 2.2rem;
+                font-weight: 800;
+                margin-bottom: 0.35rem;
+                line-height: 1.05;
+            }}
+            .hero-sub {{
+                color: {MUTED};
+                font-size: 1rem;
+                max-width: 760px;
+            }}
+            .rule-box {{
+                background: rgba(105,197,232,0.08);
+                border: 1px solid rgba(105,197,232,0.18);
+                border-radius: 16px;
+                padding: 0.9rem 1rem;
+                margin-top: 0.25rem;
+            }}
+            .stButton > button, .stDownloadButton > button {{
+                border-radius: 999px;
+                border: 1px solid rgba(105,197,232,0.35);
+                background: linear-gradient(180deg, {PRIMARY}, #59b8dc);
+                color: #081014;
+                font-weight: 800;
+            }}
+            .stButton > button:hover, .stDownloadButton > button:hover {{
+                border-color: rgba(105,197,232,0.65);
+                box-shadow: 0 0 0 2px rgba(105,197,232,0.12);
+            }}
+            .stTextInput input, .stTextArea textarea, .stFileUploader {{
+                background: rgba(255,255,255,0.03);
+                border-radius: 14px;
+            }}
+            [data-testid="stDataFrame"] {{
+                border: 1px solid rgba(105,197,232,0.2);
+                border-radius: 16px;
+                overflow: hidden;
+            }}
+            .footer-note {{
+                color: {MUTED};
+                font-size: 0.92rem;
+            }}
+        </style>
+        <div class="hero-card">
+            <div class="eyebrow">405th Infantry Division</div>
+            <div class="hero-title">Secret Santa Generator</div>
+            <div class="hero-sub">Built with a 405th-inspired interface using cool blue highlights, dark tactical panels, and a cleaner event-ready layout.</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
     st.write(
         "Upload names and optional pairing history, then generate a new round that avoids self-pairs, repeat giver→recipient pairs, and mutual swaps."
     )
 
     current_year = str(datetime.now().year)
-    year = st.text_input("Year for this round", value=current_year)
 
+    st.markdown('<div class="section-card">', unsafe_allow_html=True)
+    top_left, top_right = st.columns([1, 1])
+    with top_left:
+        year = st.text_input("Year for this round", value=current_year)
+    with top_right:
+        st.markdown(
+            '<div class="rule-box"><strong>Rules enforced</strong><br>No self-pairing<br>No repeated giver → recipient from history<br>No two-person swap in the same round</div>',
+            unsafe_allow_html=True,
+        )
+    st.markdown('</div>', unsafe_allow_html=True)
+
+    st.markdown('<div class="section-card">', unsafe_allow_html=True)
     st.subheader("Participants")
     names_file = st.file_uploader("Upload names CSV", type=["csv"], key="names_file")
     names_text = st.text_area(
@@ -222,7 +339,9 @@ def main() -> None:
             mime="text/csv",
         )
 
-    col1, col2 = st.columns(2)
+    st.markdown('</div>', unsafe_allow_html=True)
+
+    col1, col2 = st.columns([1.1, 0.9])
 
     with col1:
         if st.button("Generate pairings", type="primary", use_container_width=True):
@@ -250,11 +369,9 @@ def main() -> None:
                 st.error(f"Unexpected error: {error}")
 
     with col2:
-        st.caption("Rules enforced")
         st.markdown(
-            "- No self-pairing\n"
-            "- No repeated giver → recipient from history\n"
-            "- No two-person swap in the same round"
+            '<div class="section-card"><div class="eyebrow">Event notes</div><p class="footer-note">Upload an existing history file if you want this year to avoid prior pairings. After generating, download the updated history file and use that next time.</p></div>',
+            unsafe_allow_html=True,
         )
 
     if "assignments" in st.session_state:
@@ -264,6 +381,7 @@ def main() -> None:
 
         st.success(f"Generated pairings for {st.session_state['names_count']} participants.")
 
+        st.markdown('<div class="section-card">', unsafe_allow_html=True)
         st.subheader("Assignments")
         st.dataframe(
             [{"giver": giver, "recipient": recipient} for giver, recipient in sorted(assignments.items())],
@@ -290,6 +408,8 @@ def main() -> None:
                 mime="text/csv",
                 use_container_width=True,
             )
+
+        st.markdown('</div>', unsafe_allow_html=True)
 
         st.info(
             "Use the updated history CSV next time so this year's pairings are automatically blocked in future rounds."
