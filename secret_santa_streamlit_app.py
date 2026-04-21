@@ -348,8 +348,7 @@ def main() -> None:
             <div class="eyebrow">405th Infantry Division</div>
             <div class="hero-title">Secret Santa Generator</div>
             <div class="hero-sub">
-                Built with a 405th-inspired interface using cool blue highlights,
-                dark tactical panels, and a cleaner event-ready layout.
+                405th Infantry Divisions official app for Secret Santa!
             </div>
         </div>
         """,
