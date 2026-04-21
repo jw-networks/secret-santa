@@ -1,0 +1,6 @@
+[github]
+token = "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"
+owner = "jw-networks"
+repo = "secret-santa"
+branch = "main"
+history_path = "history.csv"
