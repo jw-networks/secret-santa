@@ -18,11 +18,16 @@ MUTED = "#9ECFDF"
 
 
 Pair = Tuple[str, str]
-HistoryPair = Tuple[str, str, str]
 
 
 class SecretSantaError(Exception):
     pass
+
+
+@dataclass(frozen=True)
+class Participant:
+    name: str
+    regiment: str = ""
 
 
 @dataclass(frozen=True)
@@ -34,6 +39,10 @@ class HistoryRecord:
 
 def normalize_name(name: str) -> str:
     return name.strip()
+
+
+def normalize_regiment(regiment: str) -> str:
+    return regiment.strip()
 
 
 def parse_names_from_text(text: str) -> List[str]:
@@ -49,39 +58,48 @@ def parse_names_from_text(text: str) -> List[str]:
     return names
 
 
-def parse_names_from_csv(file_bytes: bytes) -> List[str]:
+def parse_participants_from_csv(file_bytes: bytes) -> List[Participant]:
     text = file_bytes.decode("utf-8-sig")
     reader = csv.DictReader(io.StringIO(text))
+
     if "name" not in (reader.fieldnames or []):
         raise SecretSantaError("Names CSV must contain a 'name' column.")
 
-    names: List[str] = []
+    participants: List[Participant] = []
+
     for row in reader:
         name = normalize_name(row.get("name", ""))
-        if name:
-            names.append(name)
+        regiment = normalize_regiment(row.get("regiment", ""))
 
-    if len(names) < 2:
+        if name:
+            participants.append(Participant(name=name, regiment=regiment))
+
+    names = [participant.name for participant in participants]
+
+    if len(participants) < 2:
         raise SecretSantaError("At least 2 valid names are required.")
 
     if len(set(names)) != len(names):
         raise SecretSantaError("Duplicate names found in the participant list.")
 
-    return names
+    return participants
 
 
 def parse_history_from_csv(file_bytes: bytes) -> List[HistoryRecord]:
     text = file_bytes.decode("utf-8-sig")
     reader = csv.DictReader(io.StringIO(text))
     required = {"year", "giver", "recipient"}
+
     if not required.issubset(set(reader.fieldnames or [])):
         raise SecretSantaError("History CSV must contain 'year', 'giver', and 'recipient' columns.")
 
     history: List[HistoryRecord] = []
+
     for row in reader:
         year = str(row.get("year", "")).strip()
         giver = normalize_name(row.get("giver", ""))
         recipient = normalize_name(row.get("recipient", ""))
+
         if year and giver and recipient:
             history.append(HistoryRecord(year=year, giver=giver, recipient=recipient))
 
@@ -97,6 +115,7 @@ def is_valid_assignment(
     recipient: str,
     assignments: Dict[str, str],
     history_pairs: Set[Pair],
+    participant_regiments: Dict[str, str],
 ) -> bool:
     if giver == recipient:
         return False
@@ -111,16 +130,31 @@ def is_valid_assignment(
     if assignments.get(recipient) == giver:
         return False
 
+    blocked_regiments = {"southern", "colonial"}
+
+    giver_regiment = participant_regiments.get(giver, "").strip().lower()
+    recipient_regiment = participant_regiments.get(recipient, "").strip().lower()
+
+    if giver_regiment in blocked_regiments and giver_regiment == recipient_regiment:
+        return False
+
     return True
 
 
 def generate_assignments(
-    names: List[str],
+    participants: List[Participant],
     history: List[HistoryRecord],
     max_attempts: int = 10000,
 ) -> Dict[str, str]:
+    names = [participant.name for participant in participants]
+
     if len(names) == 2:
         raise SecretSantaError("With only 2 participants, reciprocal gifting is unavoidable.")
+
+    participant_regiments = {
+        participant.name: participant.regiment
+        for participant in participants
+    }
 
     history_pairs = build_history_set(history)
 
@@ -133,8 +167,15 @@ def generate_assignments(
             candidates = [
                 recipient
                 for recipient in names
-                if is_valid_assignment(giver, recipient, assignments, history_pairs)
+                if is_valid_assignment(
+                    giver,
+                    recipient,
+                    assignments,
+                    history_pairs,
+                    participant_regiments,
+                )
             ]
+
             random.shuffle(candidates)
 
             if not candidates:
@@ -146,7 +187,7 @@ def generate_assignments(
             return assignments
 
     raise SecretSantaError(
-        "No valid assignment could be found with the current constraints. Try adding more participants or relaxing history."
+        "No valid assignment could be found with the current constraints. Try adding more participants or relaxing history/regiment rules."
     )
 
 
@@ -154,18 +195,20 @@ def assignments_to_csv(assignments: Dict[str, str], year: str) -> str:
     output = io.StringIO()
     writer = csv.writer(output)
     writer.writerow(["year", "giver", "recipient"])
+
     for giver, recipient in sorted(assignments.items()):
         writer.writerow([year, giver, recipient])
+
     return output.getvalue()
 
 
 def names_template_csv() -> str:
     output = io.StringIO()
     writer = csv.writer(output)
-    writer.writerow(["name"])
-    writer.writerow(["Alice"])
-    writer.writerow(["Bob"])
-    writer.writerow(["Charlie"])
+    writer.writerow(["name", "regiment"])
+    writer.writerow(["Alice", "Southern"])
+    writer.writerow(["Bob", "Colonial"])
+    writer.writerow(["Charlie", "Midwest"])
     return output.getvalue()
 
 
@@ -181,8 +224,10 @@ def history_template_csv() -> str:
 
 def combine_history(history: List[HistoryRecord], assignments: Dict[str, str], year: str) -> List[HistoryRecord]:
     updated = history[:]
+
     for giver, recipient in sorted(assignments.items()):
         updated.append(HistoryRecord(year=year, giver=giver, recipient=recipient))
+
     return updated
 
 
@@ -190,13 +235,16 @@ def history_to_csv(history: List[HistoryRecord]) -> str:
     output = io.StringIO()
     writer = csv.writer(output)
     writer.writerow(["year", "giver", "recipient"])
+
     for record in history:
         writer.writerow([record.year, record.giver, record.recipient])
+
     return output.getvalue()
 
 
 def github_headers() -> Dict[str, str]:
     token = st.secrets["github"]["token"]
+
     return {
         "Authorization": f"Bearer {token}",
         "Accept": "application/vnd.github+json",
@@ -210,12 +258,14 @@ def fetch_github_file(path: str) -> Dict[str, str]:
     branch = st.secrets["github"].get("branch", "main")
 
     url = f"https://api.github.com/repos/{owner}/{repo}/contents/{path}"
+
     response = requests.get(
         url,
         headers=github_headers(),
         params={"ref": branch},
         timeout=30,
     )
+
     response.raise_for_status()
     return response.json()
 
@@ -224,7 +274,7 @@ def load_github_file_text(path: str) -> str:
     current = fetch_github_file(path)
 
     encoded = current["content"]
-    encoded = encoded.replace("\n", "")  # remove real newlines
+    encoded = encoded.replace("\n", "")
 
     return base64.b64decode(encoded).decode("utf-8")
 
@@ -253,6 +303,7 @@ def save_github_file(path: str, content_text: str, commit_message: str) -> None:
         json=payload,
         timeout=30,
     )
+
     response.raise_for_status()
 
 
@@ -360,49 +411,65 @@ def main() -> None:
     )
 
     st.write(
-        "Upload names and optional pairing history, then generate a new round that avoids self-pairs, repeat giver→recipient pairs, and mutual swaps."
+        "Upload names and optional pairing history, then generate a new round that avoids self-pairs, repeat giver→recipient pairs, mutual swaps, and blocked same-regiment pairings."
     )
 
     current_year = str(datetime.now().year)
 
     st.markdown('<div class="section-card">', unsafe_allow_html=True)
     top_left, top_right = st.columns([1, 1])
+
     with top_left:
         year = st.text_input("Year for this round", value=current_year)
+
     with top_right:
         st.markdown(
-            '<div class="rule-box"><strong>Rules enforced</strong><br>No self-pairing<br>No repeated giver → recipient from history<br>No two-person swap in the same round</div>',
+            '<div class="rule-box"><strong>Rules enforced</strong><br>No self-pairing<br>No repeated giver → recipient from history<br>No two-person swap in the same round<br>No Southern → Southern pairings<br>No Colonial → Colonial pairings</div>',
             unsafe_allow_html=True,
         )
+
     st.markdown('</div>', unsafe_allow_html=True)
 
     st.markdown('<div class="section-card">', unsafe_allow_html=True)
     st.subheader("Participants")
+
     names_file = st.file_uploader("Upload names CSV", type=["csv"], key="names_file")
+
     names_text = st.text_area(
         "Or paste one name per line",
         placeholder="Alice\nBob\nCharlie\nDana",
         height=180,
     )
 
+    st.caption(
+        "For regiment-aware pairing, upload a CSV with columns: name, regiment. "
+        "Southern will not pair with Southern, and Colonial will not pair with Colonial."
+    )
+
     st.subheader("History")
     history_file = st.file_uploader("Upload history CSV (optional)", type=["csv"], key="history_file")
 
     h1, h2 = st.columns(2)
+
     with h1:
         if st.button("Load official history from GitHub", use_container_width=True):
             try:
                 history_text = load_github_file_text(st.secrets["github"]["history_path"])
                 st.session_state["loaded_history_bytes"] = history_text.encode("utf-8")
+
                 loaded_history = parse_history_from_csv(st.session_state["loaded_history_bytes"])
+
                 st.session_state["loaded_history_count"] = len(loaded_history)
+
                 st.success(f"Loaded {len(loaded_history)} history records from GitHub.")
+
             except requests.HTTPError as error:
                 st.error(
                     f"GitHub API error: {error.response.status_code} {error.response.text}"
                 )
             except Exception as error:
                 st.error(f"Load failed: {error}")
+
     with h2:
         if st.button("Clear loaded history", use_container_width=True):
             st.session_state.pop("loaded_history_bytes", None)
@@ -419,6 +486,7 @@ def main() -> None:
             file_name="names_template.csv",
             mime="text/csv",
         )
+
         st.download_button(
             "Download history template",
             data=history_template_csv(),
@@ -434,23 +502,25 @@ def main() -> None:
         if st.button("Generate pairings", type="primary", use_container_width=True):
             try:
                 if names_file is not None:
-                    names = parse_names_from_csv(names_file.getvalue())
+                    participants = parse_participants_from_csv(names_file.getvalue())
                 else:
                     names = parse_names_from_text(names_text)
+                    participants = [Participant(name=name) for name in names]
 
                 history: List[HistoryRecord] = []
+
                 if history_file is not None:
                     history = parse_history_from_csv(history_file.getvalue())
                 elif "loaded_history_bytes" in st.session_state:
                     history = parse_history_from_csv(st.session_state["loaded_history_bytes"])
 
-                assignments = generate_assignments(names, history)
+                assignments = generate_assignments(participants, history)
                 updated_history = combine_history(history, assignments, year)
 
                 st.session_state["assignments"] = assignments
                 st.session_state["updated_history"] = updated_history
                 st.session_state["year"] = year
-                st.session_state["names_count"] = len(names)
+                st.session_state["names_count"] = len(participants)
 
             except SecretSantaError as error:
                 st.error(str(error))
@@ -459,7 +529,7 @@ def main() -> None:
 
     with col2:
         st.markdown(
-            '<div class="section-card"><div class="eyebrow">Event notes</div><p class="footer-note">Upload an existing history file if you want this year to avoid prior pairings. After generating, download the updated history file and use that next time.</p></div>',
+            '<div class="section-card"><div class="eyebrow">Event notes</div><p class="footer-note">Upload an existing history file if you want this year to avoid prior pairings. To use regiment rules, upload a names CSV with name and regiment columns. After generating, download the updated history file and use that next time.</p></div>',
             unsafe_allow_html=True,
         )
 
@@ -472,6 +542,7 @@ def main() -> None:
 
         st.markdown('<div class="section-card">', unsafe_allow_html=True)
         st.subheader("Assignments")
+
         st.dataframe(
             [{"giver": giver, "recipient": recipient} for giver, recipient in sorted(assignments.items())],
             use_container_width=True,
@@ -481,6 +552,7 @@ def main() -> None:
         updated_history_csv = history_to_csv(updated_history)
 
         d1, d2 = st.columns(2)
+
         with d1:
             st.download_button(
                 "Download assignments CSV",
@@ -489,6 +561,7 @@ def main() -> None:
                 mime="text/csv",
                 use_container_width=True,
             )
+
         with d2:
             st.download_button(
                 "Download updated history CSV",
@@ -513,9 +586,12 @@ def main() -> None:
                     content_text=updated_history_csv,
                     commit_message=commit_message,
                 )
+
                 st.success("History saved to GitHub.")
+
                 st.session_state["loaded_history_bytes"] = updated_history_csv.encode("utf-8")
                 st.session_state["loaded_history_count"] = len(updated_history)
+
             except requests.HTTPError as error:
                 st.error(
                     f"GitHub API error: {error.response.status_code} {error.response.text}"
